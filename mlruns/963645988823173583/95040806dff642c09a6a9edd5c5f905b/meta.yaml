@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/parthpore/Documents/HackAi/Financial Scrapping/fxsense/mlruns/963645988823173583/95040806dff642c09a6a9edd5c5f905b/artifacts
+end_time: 1772957065878
+entry_point_name: ''
+experiment_id: '963645988823173583'
+lifecycle_stage: active
+run_id: 95040806dff642c09a6a9edd5c5f905b
+run_name: nlp_analyze
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772957065868
+status: 4
+tags: []
+user_id: parthpore

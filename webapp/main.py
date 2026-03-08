@@ -21,6 +21,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+try:
+    from utils.gemini_client import _call_gemini as _gemini_call
+except Exception:
+    _gemini_call = None
+
 
 APP_ROOT = Path(__file__).resolve().parent
 DATA_PATH = APP_ROOT.parent / "data" / "signals_latest.csv"
@@ -73,15 +78,32 @@ YAHOO_FX_TICKERS: List[str] = [
 ]
 
 YAHOO_CURRENCIES_URL = "https://finance.yahoo.com/markets/currencies/"
-AISSTREAM_API_KEY = os.environ.get("AISSTREAM_API_KEY", "").strip()
+AISSTREAM_API_KEY = os.environ.get("ca332f9932b2b365bef2b00162bb8035076e5261", "").strip()
 
 YOUTUBE_LIVE_HANDLES = {
     "bloomberg": "BloombergTV",
     "cnbc": "CNBC",
     "reuters": "Reuters",
+    "aljazeera": "AlJazeeraEnglish",
     "france24": "France24_en",
     "skynews": "SkyNews",
 }
+
+TREASURY_TICKERS = {
+    "^IRX": "3M",
+    "^FVX": "5Y",
+    "^TNX": "10Y",
+    "^TYX": "30Y",
+}
+
+COMMODITY_TICKERS = {
+    "CL=F": "WTI Crude",
+    "GC=F": "Gold",
+    "SI=F": "Silver",
+    "HG=F": "Copper",
+    "NG=F": "Nat Gas",
+}
+
 
 FX_GEO = {
     "USD": {"name": "Washington DC", "lat": 38.9072, "lon": -77.0369, "color": "#2ee6a6"},
@@ -308,17 +330,31 @@ def _fetch_youtube_live_embed(handle: str) -> dict:
     if cached:
         return cached
 
-    url = f"https://www.youtube.com/@{handle}/live"
+    # Reuters often publishes live content under /streams
+    if handle.lower() == "reuters":
+        url = f"https://www.youtube.com/@{handle}/streams"
+    else:
+        url = f"https://www.youtube.com/@{handle}/live"
     embed_url = url
     video_id = None
     try:
         headers = {"User-Agent": "FXSenseMVP/0.1"}
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code == 200:
-            # Try to extract "videoId":"xxxx"
-            match = re.search(r'"videoId":"([a-zA-Z0-9_-]{11})"', resp.text)
-            if match:
-                video_id = match.group(1)
+            # Prefer an actively live stream when available
+            live_match = re.search(
+                r'"videoId":"([a-zA-Z0-9_-]{11})".*?"isLiveNow":true',
+                resp.text,
+                re.DOTALL,
+            )
+            if live_match:
+                video_id = live_match.group(1)
+            else:
+                # Fallback to first videoId found
+                match = re.search(r'"videoId":"([a-zA-Z0-9_-]{11})"', resp.text)
+                if match:
+                    video_id = match.group(1)
+            if video_id:
                 embed_url = f"https://www.youtube.com/embed/{video_id}"
     except Exception:
         pass
@@ -474,6 +510,76 @@ def _download_history(pair: str) -> pd.DataFrame:
                 df.rename(columns={num_cols[-1]: "Close"}, inplace=True)
     return df[["Datetime", "Close"]]
 
+def _fetch_treasuries() -> dict:
+    key = "treasuries"
+    cached = _cache_get(key, ttl=600)
+    if cached:
+        return cached
+    rows = []
+    for ticker, label in TREASURY_TICKERS.items():
+        try:
+            df = yf.download(ticker, period="7d", interval="1d", progress=False, auto_adjust=True)
+        except Exception:
+            df = pd.DataFrame()
+        if df is None or df.empty or "Close" not in df.columns:
+            rows.append({"tenor": label, "last": None, "chg": None, "chg_pct": None})
+            continue
+        last = float(df["Close"].iloc[-1])
+        prev = float(df["Close"].iloc[-2]) if len(df) > 1 else last
+        chg = last - prev
+        chg_pct = (chg / prev) * 100 if prev else 0.0
+        rows.append(
+            {
+                "tenor": label,
+                "last": round(last, 2),
+                "chg": round(chg, 2),
+                "chg_pct": round(chg_pct, 2),
+            }
+        )
+
+    # Simple FX read from 10Y move
+    fx_hint = "Mixed / neutral"
+    t10 = next((r for r in rows if r["tenor"] == "10Y"), None)
+    if t10 and t10["chg"] is not None:
+        if t10["chg"] > 0:
+            fx_hint = "USD bid · Risk-off tilt"
+        elif t10["chg"] < 0:
+            fx_hint = "USD softer · Risk-on tilt"
+    payload = {"rows": rows, "fx_hint": fx_hint}
+    _cache_set(key, payload, ttl=600)
+    return payload
+
+def _fetch_commodities() -> dict:
+    key = "commodities"
+    cached = _cache_get(key, ttl=300)
+    if cached:
+        return cached
+    rows = []
+    for ticker, label in COMMODITY_TICKERS.items():
+        try:
+            df = yf.download(ticker, period="7d", interval="1d", progress=False, auto_adjust=True)
+        except Exception:
+            df = pd.DataFrame()
+        if df is None or df.empty or "Close" not in df.columns:
+            rows.append({"name": label, "last": None, "chg": None, "chg_pct": None})
+            continue
+        last = float(df["Close"].iloc[-1])
+        prev = float(df["Close"].iloc[-2]) if len(df) > 1 else last
+        chg = last - prev
+        chg_pct = (chg / prev) * 100 if prev else 0.0
+        rows.append(
+            {
+                "name": label,
+                "last": round(last, 2),
+                "chg": round(chg, 2),
+                "chg_pct": round(chg_pct, 2),
+            }
+        )
+    payload = {"rows": rows}
+    _cache_set(key, payload, ttl=300)
+    return payload
+
+
 
 def _load_signals() -> pd.DataFrame:
     if DATA_PATH.exists():
@@ -496,6 +602,65 @@ def _load_signals() -> pd.DataFrame:
             }
         ]
     )
+
+def _fallback_story_items(df: pd.DataFrame, limit: int = 6) -> List[dict]:
+    items = []
+    if df is None or df.empty:
+        return items
+    df = df.copy()
+    if "events" in df.columns:
+        df = df[df["events"].fillna("").astype(str).str.len() > 0]
+    if "trade_suggestion" in df.columns:
+        df = df[df["trade_suggestion"].fillna("").str.lower() != "no trade"]
+    if "signal_confidence" in df.columns:
+        df = df.sort_values(by="signal_confidence", ascending=False)
+    for _, r in df.head(limit).iterrows():
+        bias = str(r.get("currency_bias", ""))
+        ccy = next((k for k in FX_GEO.keys() if k in bias), "USD")
+        items.append(
+            {
+                "ccy": ccy,
+                "title": r.get("topic", "FX Signal"),
+                "summary": r.get("macro_interpretation", "")[:180]
+                or r.get("headline", "")[:180],
+            }
+        )
+    return items
+
+def _gemini_story_items(df: pd.DataFrame, limit: int = 6) -> List[dict]:
+    if not _gemini_call or df is None or df.empty:
+        return []
+    rows = []
+    for _, r in df.head(10).iterrows():
+        rows.append(
+            f"- {r.get('headline','')}; topic={r.get('topic','')}; bias={r.get('currency_bias','')}; trade={r.get('trade_suggestion','')}"
+        )
+    prompt = (
+        "You are an FX briefing assistant. Create a story-mode feed of up to "
+        f"{limit} beats based on these signals. Do NOT copy headlines verbatim. "
+        "Synthesize higher-level insights. If bond yields or U.S. Treasuries "
+        "are relevant, include a concise 'Treasury/Bonds buzz' beat and relate "
+        "it to USD or risk sentiment.\n"
+        "Output each line as:\n"
+        "CCY|TITLE|SUMMARY\n"
+        "Where CCY is one of: USD, EUR, GBP, JPY, AUD, INR, CNY.\n"
+        "Keep TITLE under 6 words, SUMMARY under 20 words.\n"
+        "Signals:\n"
+        + "\n".join(rows)
+    )
+    text = _gemini_call(prompt, temperature=0.3) or ""
+    items = []
+    for line in text.splitlines():
+        if "|" not in line:
+            continue
+        parts = [p.strip() for p in line.split("|", 2)]
+        if len(parts) != 3:
+            continue
+        ccy, title, summary = parts
+        if ccy not in FX_GEO:
+            continue
+        items.append({"ccy": ccy, "title": title, "summary": summary})
+    return items[:limit]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -576,17 +741,154 @@ def api_signals():
     if cached:
         return JSONResponse(cached)
     df = _load_signals()
+    # De-dup display: collapse near-identical headlines and repeated trades
+    if "headline" in df.columns:
+        df["_hl_key"] = (
+            df["headline"]
+            .fillna("")
+            .astype(str)
+            .str.lower()
+            .str.replace(r"[^a-z0-9]+", " ", regex=True)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+    if "trade_suggestion" in df.columns:
+        df["_trade_key"] = df["trade_suggestion"].fillna("").astype(str)
+    if "topic" in df.columns:
+        df["_topic_key"] = df["topic"].fillna("").astype(str).str.lower()
+
     if "events" in df.columns:
         df["_has_event"] = df["events"].fillna("").astype(str).str.len() > 0
         df = df.sort_values(by=["_has_event", "signal_confidence"], ascending=False)
         df = df.drop(columns=["_has_event"], errors="ignore")
     elif "signal_confidence" in df.columns:
         df = df.sort_values(by="signal_confidence", ascending=False)
+
+    # Drop duplicate headlines
+    if "_hl_key" in df.columns:
+        df = df.drop_duplicates(subset=["_hl_key"])
+
+    # Drop duplicate trades by topic (keep highest confidence)
+    if "_trade_key" in df.columns:
+        df = df.drop_duplicates(subset=["_trade_key", "_topic_key"], keep="first")
+
+    df = df.drop(columns=["_hl_key", "_trade_key", "_topic_key"], errors="ignore")
     df = df.head(12)
     rows = df.fillna("").to_dict(orient="records")
     payload = {"rows": rows}
     _cache_set(key, payload, ttl=120)
     return JSONResponse(payload)
+
+@app.get("/api/story")
+def api_story(limit: int = Query(6, ge=3, le=10)):
+    df = _load_signals()
+    # Prefer Gemini, fallback to heuristic
+    items = _gemini_story_items(df, limit=limit)
+    if not items:
+        items = _fallback_story_items(df, limit=limit)
+    return JSONResponse({"items": items})
+
+@app.get("/api/treasuries")
+def api_treasuries():
+    return JSONResponse(_fetch_treasuries())
+
+
+@app.get("/api/commodities")
+def api_commodities():
+    return JSONResponse(_fetch_commodities())
+
+
+
+
+@app.get("/api/fx_brief")
+def api_fx_brief():
+    df = _load_signals()
+    if df is None or df.empty:
+        return JSONResponse(
+            {"title": "FX Brief", "summary": "No signals available yet.", "events": []}
+        )
+    df = df.head(12).copy()
+    rows = []
+    for _, r in df.iterrows():
+        rows.append(
+            f"- {r.get('headline','')}; topic={r.get('topic','')}; bias={r.get('currency_bias','')}; trade={r.get('trade_suggestion','')}"
+        )
+    # Heuristic: extract likely scheduled events from headlines
+    event_keywords = [
+        "cpi", "inflation", "jobs", "nfp", "payroll", "rate decision", "meeting",
+        "minutes", "press conference", "gdp", "speech", "testimony", "pmi",
+    ]
+    events = []
+    for _, r in df.iterrows():
+        h = str(r.get("headline", "")).strip()
+        h_l = h.lower()
+        if any(k in h_l for k in event_keywords):
+            events.append(h)
+        if len(events) >= 3:
+            break
+
+    if _gemini_call:
+        prompt = (
+            "Summarize how the FX market looks today as a short paragraph (6-7 sentences). "
+            "Highlight USD, EUR, JPY, GBP, AUD tone if present.\n"
+            "Mention the potential reasons/indicators for this market behavior (e.g., risk-off, inflation, rates, growth).\n"
+            "Use the signals below as evidence. Avoid copying headlines.\n"
+            "If there are notable scheduled events today, add one short sentence "
+            "starting with 'Events:' listing up to 3.\n"
+            + "\n".join(rows)
+        )
+        text = _gemini_call(prompt, temperature=0.3)
+        if text:
+            return JSONResponse({"title": "FX Brief", "summary": text.strip(), "events": events})
+
+    # Fallback summary from net bias counts
+    counts = {}
+    for v in df["currency_bias"].fillna("").astype(str):
+        for ccy in FX_GEO.keys():
+            if f"{ccy} bullish" in v:
+                counts[ccy] = counts.get(ccy, 0) + 1
+            if f"{ccy} bearish" in v:
+                counts[ccy] = counts.get(ccy, 0) - 1
+    sorted_ccy = sorted(counts.items(), key=lambda x: abs(x[1]), reverse=True)
+    top_parts = []
+    for ccy, score in sorted_ccy[:3]:
+        tone = "bullish" if score > 0 else "bearish" if score < 0 else "mixed"
+        top_parts.append(f"{ccy} {tone}")
+    tone_line = "Market tone: " + ", ".join(top_parts) if top_parts else "Market tone mixed."
+
+    topic_counts = df["topic"].fillna("").astype(str).str.lower().value_counts()
+    top_topic = topic_counts.index[0].title() if len(topic_counts) > 0 else "Macro"
+    risk_flag = "risk" in " ".join(df["topic"].fillna("").astype(str)).lower()
+    second_line = (
+        f"Dominant theme: {top_topic}. "
+        + ("Risk-off signals are elevated." if risk_flag else "Risk sentiment is balanced.")
+    )
+
+    trades = df["trade_suggestion"].fillna("").astype(str)
+    trade_count = (trades.str.lower() != "no trade").sum()
+    third_line = f"Actionable signals: {trade_count} today, focused on majors."
+
+    drivers = (
+        df["macro_interpretation"]
+        .fillna("")
+        .astype(str)
+        .replace("", pd.NA)
+        .dropna()
+        .value_counts()
+        .index[:3]
+        .tolist()
+    )
+    drivers_line = ""
+    if drivers:
+        drivers_line = "Drivers: " + "; ".join(drivers) + "."
+
+    if events:
+        event_line = "Events: " + "; ".join(events[:3]) + "."
+    else:
+        event_line = "Events: No major releases detected in feeds."
+
+    summary = " ".join([tone_line, second_line, drivers_line, third_line, event_line]).strip()
+    return JSONResponse({"title": "FX Brief", "summary": summary, "events": events})
 
 
 @app.get("/api/map_points")
@@ -595,33 +897,20 @@ def api_map_points():
     points = []
     # Count biases
     counts = {k: 0 for k in FX_GEO.keys()}
-    risk = 0
     if "currency_bias" in df.columns:
         for v in df["currency_bias"].fillna(""):
             for ccy in counts.keys():
                 if ccy in str(v):
                     counts[ccy] += 1
-            if "risk" in str(v).lower():
-                risk += 1
 
     for ccy, meta in FX_GEO.items():
         points.append(
             {
-                "label": f"{ccy} bias: {counts[ccy]}",
+                "label": f"{ccy} signals: {counts[ccy]}",
                 "lat": meta["lat"],
                 "lon": meta["lon"],
                 "color": meta["color"],
                 "size": 6 + counts[ccy] * 2,
-            }
-        )
-    if risk > 0:
-        points.append(
-            {
-                "label": f"Risk-off mentions: {risk}",
-                "lat": 40.0,
-                "lon": 15.0,
-                "color": "#ff3b3b",
-                "size": 8 + risk * 2,
             }
         )
     return JSONResponse({"points": points})
@@ -644,6 +933,15 @@ def api_ais_tankers(limit: int = Query(300, ge=50, le=2000)):
 
 @app.get("/api/youtube_live")
 def api_youtube_live(channel: str = Query(...)):
+    if channel.lower() == "bloomberg":
+        return JSONResponse(
+            {
+                "handle": "Bloomberg",
+                "video_id": "iEpJwprxDdk",
+                "embed_url": "https://www.youtube.com/embed/iEpJwprxDdk",
+                "live_url": "https://www.youtube.com/watch?v=iEpJwprxDdk",
+            }
+        )
     handle = YOUTUBE_LIVE_HANDLES.get(channel.lower())
     if not handle:
         return JSONResponse({"error": "unknown channel"}, status_code=400)

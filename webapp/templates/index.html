@@ -18,7 +18,7 @@
         <div class="logo">FX</div>
         <div class="brand-text">
           <div class="title">FXSense Monitor</div>
-          <div class="subtitle">GLOBAL · LIVE · {{ last_update }} UTC</div>
+          <div class="subtitle">GLOBAL · LIVE · {{ last_update }} </div>
         </div>
       </div>
       <div class="top-center">GLOBAL SITUATION</div>
@@ -35,6 +35,25 @@
           <div class="panel-title">MARKET PULSE</div>
           <div class="panel-body">
             <div id="pulse" class="pulse-grid"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">SESSION TRACKER</div>
+          <div class="panel-body">
+            <div id="session-tracker" class="session-tracker"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Yield Tracker</div>
+          <div class="panel-body">
+            <div id="treasury-list" class="treasury-list"></div>
+            <div id="treasury-hint" class="treasury-hint muted"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">COMMODITIES</div>
+          <div class="panel-body">
+            <div id="commodities-list" class="commodities-list"></div>
           </div>
         </div>
 
@@ -55,10 +74,32 @@
             <span class="legend-item"><span class="dot aud"></span>AUD</span>
             <span class="legend-item"><span class="dot inr"></span>INR</span>
             <span class="legend-item"><span class="dot cny"></span>CNY</span>
-            <span class="legend-item"><span class="dot risk"></span>Risk‑Off</span>
-            <span class="legend-item"><span class="dot tanker"></span>Tankers</span>
           </div>
-          <div class="trade-strip" id="trade-strip"></div>
+          <div class="macro-calendar">
+            <div class="macro-header">
+              <span class="macro-label">FX DAILY BRIEF</span>
+              <span class="macro-status">Today</span>
+            </div>
+            <div class="macro-body">
+              <div class="fx-brief" id="fx-brief">
+                <div class="fx-brief-title">Loading summary…</div>
+                <div class="fx-brief-text">Pulling live signals and news.</div>
+                <div class="fx-brief-events" id="fx-brief-events"></div>
+              </div>
+              <div class="macro-attrib">
+                AI summary Powered by Gemini.
+              </div>
+            </div>
+          </div>
+          <div class="model-reco">
+            <div class="model-reco-header">
+              <span class="model-reco-label">MODEL PREDICTIONS</span>
+              <span class="model-reco-status">Top ideas</span>
+            </div>
+            <div class="model-reco-body">
+              <div class="trade-strip" id="trade-strip"></div>
+            </div>
+          </div>
           <div class="news-strip" id="country-news"></div>
         </div>
       </section>
@@ -73,16 +114,16 @@
             <div class="live-actions"></div>
           </header>
           <div class="live-tabs" id="live-tabs">
-            <button class="tab active" data-channel="cnbc">CNBC</button>
-            <button class="tab" data-channel="reuters">Reuters</button>
+            <button class="tab active" data-channel="bloomberg">Bloomberg</button>
+            <button class="tab" data-channel="cnbc">CNBC</button>
+            <button class="tab" data-channel="aljazeera">Al Jazeera</button>
             <button class="tab" data-channel="skynews">Sky News</button>
             <button class="tab" data-channel="france24">France 24</button>
-            <button class="tab" data-channel="bloomberg">Bloomberg</button>
           </div>
           <div class="live-frame">
             <iframe
               id="live-iframe"
-              src="https://www.youtube.com/embed/live_stream?channel=UChirEOpgFCupRAk5etXqPaA"
+              src="https://www.youtube.com/embed/iEpJwprxDdk"
               loading="lazy"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowfullscreen
@@ -129,6 +170,7 @@
             </table>
           </div>
         </div>
+
       </section>
     </main>
 
@@ -137,6 +179,6 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="/static/app.js?v=3"></script>
+    <script src="/static/app.js?v=34"></script>
   </body>
 </html>

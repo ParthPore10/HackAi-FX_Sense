@@ -29,6 +29,30 @@ function renderPulse(rows) {
   });
 }
 
+function renderSessions() {
+  const el = document.getElementById("session-tracker");
+  if (!el) return;
+  const now = new Date();
+  const utcHour = now.getUTCHours() + now.getUTCMinutes() / 60;
+
+  const sessions = [
+    { name: "Asia", start: 0, end: 9 },
+    { name: "Europe", start: 7, end: 16 },
+    { name: "US", start: 13, end: 22 },
+  ];
+
+  el.innerHTML = "";
+  sessions.forEach((s) => {
+    let cls = "";
+    if (utcHour >= s.start && utcHour < s.end) cls = "active";
+    else if ((utcHour + 1) >= s.start && (utcHour + 1) < s.end) cls = "upcoming";
+    const row = document.createElement("div");
+    row.className = `session-row ${cls}`;
+    row.innerHTML = `<span>${s.name}</span><span>${s.start}:00–${s.end}:00 UTC</span>`;
+    el.appendChild(row);
+  });
+}
+
 function renderLive(rows, ts) {
   if (liveTable) liveTable.innerHTML = "";
   const tickerTrack = document.getElementById("ticker-track");
@@ -227,6 +251,72 @@ async function refreshSignals() {
   }
 }
 
+async function refreshTreasuries() {
+  const list = document.getElementById("treasury-list");
+  const hint = document.getElementById("treasury-hint");
+  if (!list) return;
+  try {
+    const data = await fetchJSON("/api/treasuries");
+    list.innerHTML = "";
+    (data.rows || []).forEach((r) => {
+      const row = document.createElement("div");
+      const cls = r.chg > 0 ? "up" : r.chg < 0 ? "down" : "";
+      row.className = "treasury-row";
+      row.innerHTML = `
+        <span class="tenor">${r.tenor}</span>
+        <span class="val">${r.last ?? "-"}</span>
+        <span class="chg ${cls}">${r.chg ?? "-"} (${r.chg_pct ?? "-"}%)</span>
+      `;
+      list.appendChild(row);
+    });
+    if (hint) hint.textContent = data.fx_hint || "";
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function refreshCommodities() {
+  const list = document.getElementById("commodities-list");
+  if (!list) return;
+  try {
+    const data = await fetchJSON("/api/commodities");
+    list.innerHTML = "";
+    (data.rows || []).forEach((r) => {
+      const row = document.createElement("div");
+      const cls = r.chg > 0 ? "up" : r.chg < 0 ? "down" : "";
+      row.className = "commodity-row";
+      row.innerHTML = `
+        <span class="name">${r.name}</span>
+        <span class="val">${r.last ?? "-"}</span>
+        <span class="chg ${cls}">${r.chg ?? "-"} (${r.chg_pct ?? "-"}%)</span>
+      `;
+      list.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function refreshFxBrief() {
+  const title = document.querySelector("#fx-brief .fx-brief-title");
+  const text = document.querySelector("#fx-brief .fx-brief-text");
+  const eventsEl = document.getElementById("fx-brief-events");
+  if (!title || !text) return;
+  try {
+    const data = await fetchJSON("/api/fx_brief");
+    title.textContent = data.title || "FX Brief";
+    text.textContent = data.summary || "No summary available.";
+    if (eventsEl) {
+      const events = data.events || [];
+      eventsEl.textContent = events.length
+        ? `Events today: ${events.join(" · ")}`
+        : "Events today: No major releases detected in feeds.";
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 // banner rotation is driven by country news now
 
 async function start() {
@@ -234,9 +324,17 @@ async function start() {
   await refreshLive();
   await refreshSignals();
   await refreshCountryNews();
+  await refreshTreasuries();
+  await refreshCommodities();
+  await refreshFxBrief();
+  renderSessions();
   setInterval(refreshLive, 60000);
   setInterval(refreshSignals, 90000);
   setInterval(refreshCountryNews, 300000);
+  setInterval(refreshTreasuries, 300000);
+  setInterval(refreshCommodities, 300000);
+  setInterval(refreshFxBrief, 180000);
+  setInterval(renderSessions, 60000);
 }
 
 start();
@@ -267,6 +365,7 @@ function renderTradeStrip(rows) {
     strip.appendChild(card);
   });
 }
+
 
 async function refreshCountryNews() {
   const container = document.getElementById("country-news");
@@ -350,23 +449,6 @@ async function initMap() {
     console.error(e);
   }
 
-  // Tankers layer (AISStream)
-  try {
-    const data = await fetchJSON("/api/ais_tankers?limit=300");
-    (data.tankers || []).forEach((t) => {
-      const marker = L.circleMarker([t.lat, t.lon], {
-        radius: 4,
-        color: "#ff9f1c",
-        weight: 1,
-        fillColor: "#ff9f1c",
-        fillOpacity: 0.6,
-      }).addTo(map);
-      marker.bindTooltip(`${t.name || t.mmsi} · ${t.speed || 0} kn`, { direction: "top" });
-    });
-  } catch (e) {
-    console.error(e);
-  }
-
 }
 
 initMap();
@@ -380,6 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const toggleBtn = document.getElementById("toggle-play");
   const fullscreenBtn = document.getElementById("fullscreen");
   let paused = false;
+
 
   async function setLiveChannel(channel) {
     if (!liveIframe) return;
@@ -406,7 +489,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const channel = btn.getAttribute("data-channel");
     if (channel) setLiveChannel(channel);
     });
-    setLiveChannel("cnbc");
+    setLiveChannel("bloomberg");
   }
 
   if (toggleBtn && liveIframe) {

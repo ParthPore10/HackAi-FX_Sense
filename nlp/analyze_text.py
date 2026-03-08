@@ -25,6 +25,46 @@ try:
 except Exception:
     summarize = lambda _text: None
 
+def _mlflow_enabled() -> bool:
+    return bool(os.environ.get("MLFLOW_TRACKING_URI") or os.environ.get("MLFLOW_ENABLE"))
+
+
+def _mlflow_run(name: str):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _noop():
+        yield None
+
+    if not _mlflow_enabled():
+        return _noop()
+    try:
+        import mlflow
+
+        if os.environ.get("MLFLOW_TRACKING_URI"):
+            mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+        mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT", "fxsense"))
+
+        @contextmanager
+        def _run():
+            with mlflow.start_run(run_name=name):
+                yield mlflow
+
+        return _run()
+    except Exception:
+        return _noop()
+
+
+def _mlflow_log_dict(mlf, d: dict, prefix: str = "metric"):
+    if not mlf:
+        return
+    for k, v in d.items():
+        try:
+            mlf.log_metric(f"{prefix}.{k}", float(v))
+        except Exception:
+            continue
+
+
 
 # ---------------------------
 # Topic detection (rule-based)
@@ -324,6 +364,23 @@ def main() -> None:
     df = pd.read_csv(args.input)
     out = analyze_dataframe(df)
     out.to_csv(args.output, index=False)
+
+    # Optional MLflow logging
+    with _mlflow_run("nlp_analyze") as mlf:
+        if mlf:
+            mlf.log_param("input", args.input)
+            mlf.log_param("output", args.output)
+            _mlflow_log_dict(
+                mlf,
+                {
+                    "rows": len(out),
+                    "sent_pos": (out["sentiment"] == "positive").sum(),
+                    "sent_neg": (out["sentiment"] == "negative").sum(),
+                    "sent_neu": (out["sentiment"] == "neutral").sum(),
+                    "events_tagged": out["events"].fillna("").astype(str).str.len().gt(0).sum(),
+                },
+                prefix="nlp",
+            )
     print(f"Wrote {len(out)} records to {args.output}")
 
 
