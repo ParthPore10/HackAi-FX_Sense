@@ -13,11 +13,25 @@ This is built to be **fast, demo‑friendly, and local‑first** for a 24‑hour
 - **Live dashboard** with:
   - FX price ribbon
   - World FX signal map
-  - FX Daily Brief (Gemini optional)
+  - FX Daily Brief
   - Model Predictions (trade cards)
   - Country headlines
   - Commodities
   - Live news streams (Bloomberg default)
+
+## Screenshots
+
+### Overview
+![FXSense Overview](assets/overview.png)
+
+### Model Predictions + Headlines
+![FXSense Models](assets/models.png)
+
+### Live News + FX Charts
+![FXSense Live News](assets/live_news.png)
+
+### Top Signals Table
+![FXSense Top Signals](assets/signals.png)
 
 ## Project Structure
 
@@ -179,3 +193,4 @@ RETURN_LOGIT_COLS=data/return_logit_metrics.json
 
 This is a **hackathon MVP** and for educational/demo use only. Not financial advice.
 
+1

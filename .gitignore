@@ -17,3 +17,4 @@ fxsense/data/*.csv
 fxsense/data/*.json
 fxsense/data/*.parquet
 fxsense/data/*.pkl
+fxsense/assets/
