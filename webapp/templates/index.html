@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FXSense — Live FX Intelligence</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="top-left">
+        <div class="logo">FX</div>
+        <div class="brand-text">
+          <div class="title">FXSense Monitor</div>
+          <div class="subtitle">GLOBAL · LIVE · {{ last_update }} UTC</div>
+        </div>
+      </div>
+      <div class="top-center">GLOBAL SITUATION</div>
+      <div class="top-right"></div>
+    </div>
+    <div class="alert-banner" id="alert-banner"></div>
+    <div class="ticker-ribbon">
+      <div id="ticker-track" class="ticker-track"></div>
+    </div>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <div class="panel">
+          <div class="panel-title">MARKET PULSE</div>
+          <div class="panel-body">
+            <div id="pulse" class="pulse-grid"></div>
+          </div>
+        </div>
+
+      </aside>
+
+      <section class="map-panel">
+        <div class="map-header">
+          <div class="time-label">SUN, 08 MAR 2026 · 00:55:58 UTC</div>
+          <div class="map-controls"></div>
+        </div>
+        <div class="map-body">
+          <div id="fx-map"></div>
+          <div class="map-legend">
+            <span class="legend-item"><span class="dot usd"></span>USD</span>
+            <span class="legend-item"><span class="dot eur"></span>EUR</span>
+            <span class="legend-item"><span class="dot gbp"></span>GBP</span>
+            <span class="legend-item"><span class="dot jpy"></span>JPY</span>
+            <span class="legend-item"><span class="dot aud"></span>AUD</span>
+            <span class="legend-item"><span class="dot inr"></span>INR</span>
+            <span class="legend-item"><span class="dot cny"></span>CNY</span>
+            <span class="legend-item"><span class="dot risk"></span>Risk‑Off</span>
+            <span class="legend-item"><span class="dot tanker"></span>Tankers</span>
+          </div>
+          <div class="trade-strip" id="trade-strip"></div>
+          <div class="news-strip" id="country-news"></div>
+        </div>
+      </section>
+
+      <section class="bottom-grid">
+        <div class="card live-news">
+          <header class="card-header live-header">
+            <div class="live-title">
+              <span class="live-label">LIVE NEWS</span>
+              <span class="live-status"><span class="dot"></span>PAUSED</span>
+            </div>
+            <div class="live-actions"></div>
+          </header>
+          <div class="live-tabs" id="live-tabs">
+            <button class="tab active" data-channel="cnbc">CNBC</button>
+            <button class="tab" data-channel="reuters">Reuters</button>
+            <button class="tab" data-channel="skynews">Sky News</button>
+            <button class="tab" data-channel="france24">France 24</button>
+            <button class="tab" data-channel="bloomberg">Bloomberg</button>
+          </div>
+          <div class="live-frame">
+            <iframe
+              id="live-iframe"
+              src="https://www.youtube.com/embed/live_stream?channel=UChirEOpgFCupRAk5etXqPaA"
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowfullscreen
+            ></iframe>
+            <div id="live-fallback" class="chart-fallback" style="display:none;">
+              Channel is not live. <a id="live-link" href="#" target="_blank" rel="noopener">Open live page</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <header class="card-header">
+            <h2>2Y FX Charts</h2>
+            <span class="muted">All majors at once</span>
+          </header>
+          <div class="chart-controls">
+            <label for="chart-pair-select">View more:</label>
+            <select id="chart-pair-select"></select>
+          </div>
+          <div id="charts-stack" class="charts-stack"></div>
+        </div>
+
+        <div class="card full">
+          <header class="card-header">
+            <h2>Top Signals</h2>
+            <span class="muted">Latest NLP + rule-based interpretation</span>
+          </header>
+          <div class="table-wrap">
+            <table id="signals-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Headline</th>
+                  <th>Topic</th>
+                  <th>Sentiment</th>
+                  <th>Events</th>
+                  <th>Interpretation</th>
+                  <th>Bias</th>
+                  <th>Trade</th>
+                  <th>Conf</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/static/app.js?v=3"></script>
+  </body>
+</html>
